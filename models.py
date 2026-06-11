@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, Date, Boolean, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import create_engine, Column, Integer, String, Text, Date, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql import func
@@ -56,6 +56,7 @@ class Family(Base):
     description = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, server_default=func.now())
+    shared_with = Column(JSON, default=list)  # List of {user_id, permission: "view"|"edit"}
 
     creator = relationship("User", back_populates="families")
     members = relationship("Member", back_populates="family", cascade="all, delete-orphan")
