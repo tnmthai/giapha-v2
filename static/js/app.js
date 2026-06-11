@@ -362,7 +362,7 @@ function renderTree(members) {
             .setCardDisplay([['name'], ['birth_date', 'death_date']])
             .setMiniTree(true)
             .setOnHoverPathToMain()
-            .setHtml((d) => {
+            .setCardInnerHtmlCreator((d) => {
                 const datum = d.data || d;
                 const photo = datum.data?.photo || '';
                 const name = datum.data?.name || 'Thành viên';
