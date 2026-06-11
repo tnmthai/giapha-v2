@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gia Phả - Vietnamese Family Tree</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/family-chart@0.9.0/dist/styles/family-chart.css">
+    <script src="https://unpkg.com/d3@7"></script>
+    <script src="https://unpkg.com/family-chart@0.9.0/dist/family-chart.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== Auth Screen ==================== -->
+<div id="auth-screen" class="auth-container">
+    <div class="auth-box">
+        <h1>🌳 Gia Phả</h1>
+        <p class="subtitle">Quản lý gia phả trực tuyến</p>
+
+        <!-- Login Form -->
+        <div id="login-form">
+            <div class="form-group">
+                <label>Tên đăng nhập</label>
+                <input type="text" id="login-username" placeholder="Nhập tên đăng nhập" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="login-password" placeholder="Nhập mật khẩu" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" onclick="login()">Đăng nhập</button>
+            <div class="auth-toggle">
+                Chưa có tài khoản? <a onclick="toggleAuthForm('register')">Đăng ký</a>
+            </div>
+        </div>
+
+        <!-- Register Form -->
+        <div id="register-form" style="display:none">
+            <div class="form-group">
+                <label>Tên đăng nhập</label>
+                <input type="text" id="reg-username" placeholder="Chọn tên đăng nhập" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="reg-password" placeholder="Chọn mật khẩu" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>Tên hiển thị</label>
+                <input type="text" id="reg-displayname" placeholder="Tên của bạn (tùy chọn)">
+            </div>
+            <button class="btn btn-primary" onclick="register()">Đăng ký</button>
+            <div class="auth-toggle">
+                Đã có tài khoản? <a onclick="toggleAuthForm('login')">Đăng nhập</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== App Screen ==================== -->
+<div id="app-screen" class="app-container" style="display:none">
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <h2 onclick="goBackToList()" style="cursor:pointer">🌳 Gia Phả</h2>
+        <div class="user-info">
+            <span id="user-display"></span>
+            <button class="btn btn-secondary btn-small" onclick="logout()">Đăng xuất</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Family List View -->
+        <div id="family-list-view" class="family-list-container">
+            <div class="family-list-header">
+                <h3>Gia phả của bạn</h3>
+                <button class="btn btn-primary" onclick="showCreateFamilyModal()" style="width:auto">+ Tạo mới</button>
+            </div>
+            <div id="family-list"></div>
+        </div>
+
+        <!-- Family Tree View -->
+        <div id="family-tree-view" class="tree-container" style="display:none">
+            <div class="tree-header">
+                <div class="left">
+                    <button class="btn btn-secondary btn-small" onclick="goBackToList()">← Quay lại</button>
+                    <h3 id="tree-title"></h3>
+                </div>
+                <div class="tree-actions">
+                    <button class="btn btn-success btn-small" onclick="seedFamily(currentFamily.id)">🌱 Dữ liệu mẫu</button>
+                </div>
+            </div>
+            <div id="tree-content" style="flex:1;position:relative;overflow:hidden;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== Create Family Modal ==================== -->
+<div id="modal-create-family" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Tạo gia phả mới</h3>
+        <div class="form-group">
+            <label>Tên gia phả</label>
+            <input type="text" id="family-name-input" placeholder="VD: Gia tộc Trần">
+        </div>
+        <div class="form-group">
+            <label>Mô tả</label>
+            <textarea id="family-desc-input" rows="3" placeholder="Mô tả ngắn về gia phả..."></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeCreateFamilyModal()">Hủy</button>
+            <button class="btn btn-primary" onclick="createFamily()" style="width:auto">Tạo</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
