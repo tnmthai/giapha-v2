@@ -101,3 +101,14 @@ class MemberRelationship(Base):
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    # Auto-migrate: add missing columns
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(engine)
+        existing_cols = {c['name'] for c in inspector.get_columns('families')}
+        if 'shared_with' not in existing_cols:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE families ADD COLUMN shared_with JSONB DEFAULT \'[]\'::jsonb'))
+                conn.commit()
+    except Exception as e:
+        print(f"Migration warning: {e}")
