@@ -170,6 +170,9 @@ async function openFamily(familyId) {
                         <button class="btn btn-primary" onclick="showAddMemberModal()" style="width:auto">👤 Thêm thành viên</button>
                         <button class="btn btn-secondary" onclick="seedFamily(${familyId})" style="width:auto">🌱 Nạp dữ liệu mẫu</button>
                     </div>
+                    <p style="margin-top:1rem;font-size:0.85rem;color:var(--text-secondary)">
+                        💡 Sau khi thêm thành viên, click vào thẻ người → chọn "Thêm cha/mẹ/vợ/chồng/con" để kết nối
+                    </p>
                 </div>`;
             return;
         }
