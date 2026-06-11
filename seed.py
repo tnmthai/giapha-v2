@@ -1,5 +1,13 @@
 """Standalone seed script - seeds demo data into the database."""
-from models import create_tables, SessionLocal, User, Family, Member, MemberRelationship, hash_password
+import hashlib
+import secrets
+from models import create_tables, SessionLocal, User, Family, Member, MemberRelationship
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{h}"
 
 
 def seed():

@@ -191,7 +191,7 @@ function renderTree(members) {
             .setCardXSpacing(250)
             .setCardYSpacing(150);
 
-        f3Chart.setCardHtml()
+        const card = f3Chart.setCardHtml()
             .setCardDisplay([['name'], ['birth_date', 'death_date']])
             .setMiniTree(true)
             .setOnHoverPathToMain();
