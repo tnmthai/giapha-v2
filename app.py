@@ -401,3 +401,4 @@ def seed_family(family_id: int, user: User = Depends(require_user), db: Session 
 
     db.commit()
     return {"ok": True, "members_created": len(members_data), "relationships_created": len(rels)}
+# force rebuild Thu Jun 11 23:17:11 NZST 2026
