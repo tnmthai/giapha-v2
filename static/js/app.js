@@ -186,13 +186,18 @@ function renderTree(members) {
     const chartEl = document.getElementById('FamilyChart');
 
     try {
-        const f3Chart = f3.createChart('#FamilyChart', members);
-
-        f3Chart.setCardHtml()
+        // Create card config first (Card class methods)
+        const card = f3.cardHtml()
             .setCardDisplay([['name'], ['birth_date', 'death_date']])
             .setMiniTree(true)
-            .setOnHoverPathToAncestors(true)
-            .setOnHoverPathToDescendants(true);
+            .setOnHoverPathToMain();
+
+        // Create chart and set card
+        const f3Chart = f3.createChart('#FamilyChart', members)
+            .setCard(card)
+            .setTransitionTime(200)
+            .setCardXSpacing(250)
+            .setCardYSpacing(150);
 
         editTreeInstance = f3Chart.editTree()
             .setFields([
