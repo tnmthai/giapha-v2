@@ -85,6 +85,7 @@
                     <h3 id="tree-title"></h3>
                 </div>
                 <div class="tree-actions">
+                    <button class="btn btn-primary btn-small" onclick="showAddMemberModal()" style="width:auto">👤 Thêm thành viên</button>
                     <button class="btn btn-success btn-small" onclick="seedFamily(currentFamily.id)">🌱 Dữ liệu mẫu</button>
                 </div>
             </div>
@@ -108,6 +109,44 @@
         <div class="modal-actions">
             <button class="btn btn-secondary" onclick="closeCreateFamilyModal()">Hủy</button>
             <button class="btn btn-primary" onclick="createFamily()" style="width:auto">Tạo</button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== Add Member Modal ==================== -->
+<div id="modal-add-member" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Thêm thành viên</h3>
+        <div class="form-group">
+            <label>Họ và tên *</label>
+            <input type="text" id="member-name-input" placeholder="Nguyễn Văn A">
+        </div>
+        <div class="form-group">
+            <label>Giới tính</label>
+            <select id="member-gender-input">
+                <option value="M">Nam</option>
+                <option value="F">Nữ</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Năm sinh</label>
+            <input type="text" id="member-birth-input" placeholder="1990">
+        </div>
+        <div class="form-group">
+            <label>Năm mất</label>
+            <input type="text" id="member-death-input" placeholder="Để trống nếu còn sống">
+        </div>
+        <div class="form-group">
+            <label>Nơi sinh</label>
+            <input type="text" id="member-birthplace-input" placeholder="Hà Nội">
+        </div>
+        <div class="form-group">
+            <label>Nghề nghiệp</label>
+            <input type="text" id="member-occupation-input" placeholder="Kỹ sư">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeAddMemberModal()">Hủy</button>
+            <button class="btn btn-primary" onclick="addFirstMember()" style="width:auto">Thêm</button>
         </div>
     </div>
 </div>

@@ -165,9 +165,10 @@ async function openFamily(familyId) {
                 <div class="empty-state">
                     <div class="icon">👥</div>
                     <h3>Chưa có thành viên nào</h3>
-                    <p>Thêm thành viên hoặc nạp dữ liệu mẫu</p>
+                    <p>Thêm thành viên đầu tiên để bắt đầu</p>
                     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                        <button class="btn btn-primary" onclick="seedFamily(${familyId})" style="width:auto">🌱 Nạp dữ liệu mẫu</button>
+                        <button class="btn btn-primary" onclick="showAddMemberModal()" style="width:auto">👤 Thêm thành viên</button>
+                        <button class="btn btn-secondary" onclick="seedFamily(${familyId})" style="width:auto">🌱 Nạp dữ liệu mẫu</button>
                     </div>
                 </div>`;
             return;
@@ -332,6 +333,51 @@ async function syncRelationships(datum) {
                 });
             } catch (e) { console.warn('sync parent err:', e); }
         }
+    }
+}
+
+// ==================== Add Member Modal ====================
+function showAddMemberModal() {
+    document.getElementById('modal-add-member').classList.add('active');
+    document.getElementById('member-name-input').value = '';
+    document.getElementById('member-gender-input').value = 'M';
+    document.getElementById('member-birth-input').value = '';
+    document.getElementById('member-death-input').value = '';
+    document.getElementById('member-birthplace-input').value = '';
+    document.getElementById('member-occupation-input').value = '';
+}
+
+function closeAddMemberModal() {
+    document.getElementById('modal-add-member').classList.remove('active');
+}
+
+async function addFirstMember() {
+    const name = document.getElementById('member-name-input').value.trim();
+    if (!name) return toast('Nhập họ tên', 'error');
+
+    const gender = document.getElementById('member-gender-input').value;
+    const birthDate = document.getElementById('member-birth-input').value.trim();
+    const deathDate = document.getElementById('member-death-input').value.trim();
+    const birthPlace = document.getElementById('member-birthplace-input').value.trim();
+    const occupation = document.getElementById('member-occupation-input').value.trim();
+
+    try {
+        await api(`/api/families/${currentFamily.id}/members`, {
+            method: 'POST',
+            body: JSON.stringify({
+                full_name: name,
+                gender: gender,
+                birth_date: birthDate,
+                death_date: deathDate,
+                birth_place: birthPlace,
+                occupation: occupation,
+            }),
+        });
+        closeAddMemberModal();
+        toast('Đã thêm thành viên!', 'success');
+        openFamily(currentFamily.id);
+    } catch (e) {
+        toast(e.message, 'error');
     }
 }
 
