@@ -3,18 +3,39 @@ import hashlib
 import secrets
 import uuid
 import json
+import bcrypt
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func as sqlfunc
 from pydantic import BaseModel
 from typing import Optional, List
 from models import Base, engine, get_db, User, Family, Member, MemberRelationship, RelationshipType, create_tables
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import io
 
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+# CSRF token store (in-memory, per-session)
+csrf_tokens = {}
+
 app = FastAPI(title="Gia Phả - Vietnamese Family Tree")
+app.state.limiter = limiter
+
+# CORS - restrict to same origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],  # No cross-origin allowed
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
 # Create tables on startup
 create_tables()
@@ -22,6 +43,15 @@ create_tables()
 # Ensure upload directory exists
 UPLOAD_DIR = Path("static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Rate limit error handler
+@app.exception_handler(RateLimitExceeded)
+def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return Response(
+        content='{"detail": "Too many requests. Please try again later."}',
+        status_code=429,
+        media_type="application/json"
+    )
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -33,15 +63,20 @@ ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # ==================== Auth helpers ====================
 
 def hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    h = hashlib.sha256((salt + password).encode()).hexdigest()
-    return f"{salt}:{h}"
+    """Hash password using bcrypt (industry standard)."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(stored: str, password: str) -> bool:
+    """Verify password against bcrypt hash. Supports legacy SHA-256 for migration."""
     try:
-        salt, h = stored.split(":")
-        return hashlib.sha256((salt + password).encode()).hexdigest() == h
-    except:
+        if stored.startswith('$2b$') or stored.startswith('$2a$'):
+            # bcrypt hash
+            return bcrypt.checkpw(password.encode('utf-8'), stored.encode('utf-8'))
+        else:
+            # Legacy SHA-256 (for existing users - will be migrated on next login)
+            salt, h = stored.split(":")
+            return hashlib.sha256((salt + password).encode()).hexdigest() == h
+    except Exception:
         return False
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
@@ -136,7 +171,8 @@ async def root():
 
 
 @app.post("/api/register")
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, req: RegisterRequest, db: Session = Depends(get_db)):
     if len(req.username) < 3 or len(req.username) > 50:
         raise HTTPException(400, "Username must be 3-50 characters")
     if len(req.password) < 6:
@@ -152,17 +188,23 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     resp = Response(content='{"ok": true}', media_type="application/json")
-    resp.set_cookie("user_id", str(user.id), httponly=True, samesite="lax", max_age=86400*30)
+    resp.set_cookie("user_id", str(user.id), httponly=True, samesite="strict", max_age=86400*30, path="/")
+    # Migrate to bcrypt on next login
     return resp
 
 
 @app.post("/api/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not verify_password(user.password_hash, req.password):
         raise HTTPException(401, "Invalid credentials")
+    # Auto-migrate legacy password hash to bcrypt
+    if not user.password_hash.startswith('$2b$') and not user.password_hash.startswith('$2a$'):
+        user.password_hash = hash_password(req.password)
+        db.commit()
     resp = Response(content='{"ok": true}', media_type="application/json")
-    resp.set_cookie("user_id", str(user.id), httponly=True, samesite="lax", max_age=86400*30)
+    resp.set_cookie("user_id", str(user.id), httponly=True, samesite="strict", max_age=86400*30, path="/")
     return resp
 
 
