@@ -364,12 +364,12 @@ function renderTree(members) {
             .setOnHoverPathToMain()
             .setCardInnerHtmlCreator((d) => {
                 const datum = d.data || d;
-                const photo = datum.data?.photo || '';
-                const name = datum.data?.name || 'Thành viên';
-                const birthDate = datum.data?.birth_date || '';
-                const deathDate = datum.data?.death_date || '';
-                const gender = datum.data?.gender || 'M';
-                const isAlive = datum.data?.is_alive;
+                const photo = datum.photo || '';
+                const name = datum.name || 'Thành viên';
+                const birthDate = datum.birth_date || '';
+                const deathDate = datum.death_date || '';
+                const gender = datum.gender || 'M';
+                const isAlive = datum.is_alive;
                 const badgesHtml = buildBadgesHtml(datum);
 
                 let photoHtml = '';
@@ -429,13 +429,13 @@ function renderTree(members) {
                         await api(`/api/members/${datum.id}`, {
                             method: 'PUT',
                             body: JSON.stringify({
-                                full_name: data.name || datum.data.name,
-                                gender: data.gender || datum.data.gender,
-                                birth_date: data.birth_date || datum.data.birth_date,
-                                death_date: data.death_date || datum.data.death_date,
-                                birth_place: data.birth_place || datum.data.birth_place,
-                                occupation: data.occupation || datum.data.occupation,
-                                bio: data.bio || datum.data.bio,
+                                full_name: data.name || datum.name,
+                                gender: data.gender || datum.gender,
+                                birth_date: data.birth_date || datum.birth_date,
+                                death_date: data.death_date || datum.death_date,
+                                birth_place: data.birth_place || datum.birth_place,
+                                occupation: data.occupation || datum.occupation,
+                                bio: data.bio || datum.bio,
                             }),
                         });
                         toast('Đã cập nhật thành viên', 'success');
@@ -468,7 +468,7 @@ function renderTree(members) {
                 }
             })
             .setOnDelete(async (datum, deletePerson, postSubmit) => {
-                if (!confirm(`Xóa thành viên "${datum.data.name}"?`)) {
+                if (!confirm(`Xóa thành viên "${datum.name}"?`)) {
                     postSubmit();
                     return;
                 }
