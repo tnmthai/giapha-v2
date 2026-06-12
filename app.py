@@ -143,6 +143,8 @@ class MemberCreate(BaseModel):
     bio: Optional[str] = None
     photo: Optional[str] = None
     is_alive: bool = True
+    pos_x: Optional[int] = 0
+    pos_y: Optional[int] = 0
 
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -154,6 +156,8 @@ class MemberUpdate(BaseModel):
     bio: Optional[str] = None
     photo: Optional[str] = None
     is_alive: Optional[bool] = None
+    pos_x: Optional[int] = None
+    pos_y: Optional[int] = None
 
 class RelationshipCreate(BaseModel):
     to_member_id: int
@@ -378,6 +382,8 @@ def get_family_members(family_id: int, user: User = Depends(require_user), db: S
                 "children": children,
             },
             "rel_types": rel_types,  # Feature 4: relationship type badges
+            "pos_x": m.pos_x or 0,
+            "pos_y": m.pos_y or 0,
         })
 
     return {"family": {"id": family.id, "name": family.name, "owned": family.created_by == user.id}, "members": result}

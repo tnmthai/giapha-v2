@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gia Phả - Vietnamese Family Tree</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="https://unpkg.com/family-chart@0.9.0/dist/styles/family-chart.css">
-    <script src="https://unpkg.com/d3@7"></script>
-    <script src="https://unpkg.com/family-chart@0.9.0/dist/family-chart.min.js"></script>
+    <!-- JointJS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/backbone@1.4.1/lib/backbone-min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js"></script>
     <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
@@ -82,24 +85,30 @@
                     <h3 id="tree-title"></h3>
                 </div>
                 <div class="tree-actions">
-                    <!-- Feature 2: Search -->
+                    <!-- Search -->
                     <div class="search-box">
                         <input type="text" id="search-input" placeholder="🔍 Tìm thành viên..." oninput="debounceSearch()" onkeydown="if(event.key==='Enter')searchMembers()">
                         <div id="search-results" class="search-results"></div>
                     </div>
                     <button class="btn btn-primary btn-small" onclick="showAddMemberModal()" style="width:auto">👤 Thêm</button>
                     <button class="btn btn-success btn-small" onclick="seedFamily(currentFamily.id)">🌱 Mẫu</button>
-                    <!-- Feature 3: Export -->
+                    <!-- Export -->
                     <button class="btn btn-secondary btn-small" onclick="exportFamily()" title="Xuất file">📄 Xuất</button>
-                    <!-- Feature 5: Share -->
+                    <!-- Share -->
                     <button class="btn btn-secondary btn-small" id="btn-share" onclick="showShareModal()" title="Chia sẻ">🔗 Chia sẻ</button>
-                    <!-- Feature 7: Edit family -->
+                    <!-- Edit family -->
                     <button class="btn btn-secondary btn-small" id="btn-edit-family" onclick="showEditFamilyModal()" title="Sửa tên">✏️</button>
-                    <!-- Feature 6: Delete family -->
+                    <!-- Delete family -->
                     <button class="btn btn-danger btn-small" id="btn-delete-family" onclick="confirmDeleteFamily()" title="Xóa gia phả">🗑️</button>
-                    <!-- Feature 9: Connect mode -->
+                    <!-- Connect mode -->
                     <button class="btn btn-secondary btn-small" id="btn-connect-mode" onclick="toggleConnectMode()" title="Chế độ kết nối">🔗 Kết nối</button>
-                    <div class="help-tip" title="Click vào thẻ người → chọn Thêm cha/mẹ/vợ/chồng/con để kết nối">💡</div>
+                    <!-- Zoom controls -->
+                    <div class="zoom-controls">
+                        <button class="btn btn-secondary btn-small" onclick="zoomIn()" title="Phóng to">➕</button>
+                        <button class="btn btn-secondary btn-small" onclick="zoomOut()" title="Thu nhỏ">➖</button>
+                        <button class="btn btn-secondary btn-small" onclick="zoomFit()" title="Vừa màn hình">⬜</button>
+                    </div>
+                    <div class="help-tip" title="Click vào thẻ người → chọn Thêm cha/mẹ/vợ/chồng/con để kết nối. Kéo thả để di chuyển. Double-click canvas để thêm mới.">💡</div>
                 </div>
             </div>
             <!-- Connect mode status bar -->
@@ -131,7 +140,7 @@
     </div>
 </div>
 
-<!-- ==================== Edit Family Modal (Feature 7) ==================== -->
+<!-- ==================== Edit Family Modal ==================== -->
 <div id="modal-edit-family" class="modal-overlay">
     <div class="modal-box">
         <h3>Sửa gia phả</h3>
@@ -150,10 +159,10 @@
     </div>
 </div>
 
-<!-- ==================== Add Member Modal ==================== -->
+<!-- ==================== Add/Edit Member Modal ==================== -->
 <div id="modal-add-member" class="modal-overlay">
     <div class="modal-box">
-        <h3>Thêm thành viên</h3>
+        <h3 id="member-modal-title">Thêm thành viên</h3>
         <div class="form-group">
             <label>Họ và tên *</label>
             <input type="text" id="member-name-input" placeholder="Nguyễn Văn A">
@@ -183,12 +192,13 @@
         </div>
         <div class="modal-actions">
             <button class="btn btn-secondary" onclick="closeModal('modal-add-member')">Hủy</button>
-            <button class="btn btn-primary" onclick="addFirstMember()" style="width:auto">Thêm</button>
+            <button class="btn btn-danger btn-small" id="btn-delete-member" onclick="deleteCurrentMember()" style="display:none;margin-right:auto">🗑️ Xóa</button>
+            <button class="btn btn-primary" id="btn-save-member" onclick="saveMember()" style="width:auto">Thêm</button>
         </div>
     </div>
 </div>
 
-<!-- ==================== Share Modal (Feature 5) ==================== -->
+<!-- ==================== Share Modal ==================== -->
 <div id="modal-share" class="modal-overlay">
     <div class="modal-box">
         <h3>🔗 Chia sẻ gia phả</h3>
@@ -211,7 +221,7 @@
     </div>
 </div>
 
-<!-- ==================== Member Detail Modal (Feature 8) ==================== -->
+<!-- ==================== Member Detail Modal ==================== -->
 <div id="modal-member-detail" class="modal-overlay">
     <div class="modal-box modal-box-large">
         <div id="member-detail-content"></div>
@@ -222,7 +232,7 @@
     </div>
 </div>
 
-<!-- ==================== Photo Upload Modal (Feature 1) ==================== -->
+<!-- ==================== Photo Upload Modal ==================== -->
 <div id="modal-photo-upload" class="modal-overlay">
     <div class="modal-box">
         <h3>📷 Upload ảnh</h3>
@@ -238,7 +248,7 @@
     </div>
 </div>
 
-<!-- ==================== Connect Modal (Feature 9) ==================== -->
+<!-- ==================== Connect Modal ==================== -->
 <div id="modal-connect" class="modal-overlay">
     <div class="modal-box">
         <h3>🔗 Chọn quan hệ</h3>

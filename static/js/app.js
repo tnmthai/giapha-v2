@@ -2,20 +2,29 @@
 let currentUser = null;
 let families = [];
 let currentFamily = null;
-let chartInstance = null;
-let editTreeInstance = null;
-let allMembers = []; // Cache for connect mode
+let allMembers = [];
 let searchTimer = null;
 
-// Connect mode state (Feature 9)
-let connectMode = false;
-let connectFirst = null; // {id, name}
+// JointJS instances
+let graph = null;
+let paper = null;
+let paperScroller = null;
 
-// Member detail state (Feature 8)
+// Connect mode state
+let connectMode = false;
+let connectFirst = null;
+
+// Member edit state
+let editingMemberId = null;
+
+// Photo upload state
+let photoUploadMemberId = null;
+
+// Current detail member
 let currentDetailMemberId = null;
 
-// Photo upload state (Feature 1)
-let photoUploadMemberId = null;
+// Element → member ID mapping
+let elementMemberMap = {};
 
 // ==================== API helpers ====================
 async function api(url, opts = {}) {
@@ -186,7 +195,7 @@ async function createFamily() {
     }
 }
 
-// ==================== Feature 6: Delete Family ====================
+// ==================== Delete Family ====================
 function confirmDeleteFamily() {
     if (!currentFamily) return;
     if (!confirm(`Xóa gia phả "${currentFamily.name}"?\n\nTất cả thành viên và quan hệ sẽ bị xóa vĩnh viễn.`)) return;
@@ -203,12 +212,11 @@ async function deleteFamily() {
     }
 }
 
-// ==================== Feature 7: Edit Family ====================
+// ==================== Edit Family ====================
 function showEditFamilyModal() {
     if (!currentFamily) return;
     document.getElementById('edit-family-name').value = currentFamily.name || '';
     document.getElementById('edit-family-desc').value = '';
-    // Fetch current description
     const f = families.find(f => f.id === currentFamily.id);
     if (f) document.getElementById('edit-family-desc').value = f.description || '';
     openModal('modal-edit-family');
@@ -233,7 +241,7 @@ async function updateFamily() {
     }
 }
 
-// ==================== Feature 5: Share ====================
+// ==================== Share ====================
 function showShareModal() {
     if (!currentFamily) return;
     document.getElementById('share-username').value = '';
@@ -243,14 +251,8 @@ function showShareModal() {
 
 async function loadShareList() {
     try {
-        // Get family members data which includes share info via family endpoint
-        const data = await api(`/api/families/${currentFamily.id}/members`);
-        // We need to get share info from somewhere - let's use a dedicated approach
-        // For now, show shared users from the family data
         const familyData = await api(`/api/families`);
         const fam = familyData.find(f => f.id === currentFamily.id);
-        // The list endpoint doesn't return shared_with, so we'll fetch from members endpoint
-        // which returns family info. We need a better approach - let's add shared info to the members endpoint
         document.getElementById('share-list').innerHTML = '<p style="color:var(--text-secondary);font-size:13px">Nhập username và chọn quyền để chia sẻ.</p>';
     } catch (e) {
         console.warn('load share list:', e);
@@ -273,7 +275,83 @@ async function shareFamily() {
     }
 }
 
-// ==================== Family Tree ====================
+// ==================== Badge colors ====================
+function getRelBadge(relType) {
+    const badges = {
+        'spouse': null,
+        'ex_spouse': { label: 'Vợ/Chồng cũ', color: '#ff4d4f', bg: 'rgba(255,77,79,0.15)' },
+        'stepchild': { label: 'Con riêng', color: '#faad14', bg: 'rgba(250,173,20,0.15)' },
+        'step_parent': { label: 'Cha/Mẹ kế', color: '#faad14', bg: 'rgba(250,173,20,0.15)' },
+        'adopted_child': { label: 'Con nuôi', color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
+        'adoptive_parent': { label: 'Cha/Mẹ nuôi', color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
+        'child': null,
+        'parent': null,
+    };
+    return badges[relType] || null;
+}
+
+function buildBadgesHtml(datum) {
+    const relTypes = datum.rel_types || {};
+    const badges = new Set();
+    for (const [id, type] of Object.entries(relTypes)) {
+        const badge = getRelBadge(type);
+        if (badge) badges.add(JSON.stringify(badge));
+    }
+    if (badges.size === 0) return '';
+    return Array.from(badges).map(b => {
+        const { label, color, bg } = JSON.parse(b);
+        return `<span class="rel-badge" style="color:${color};background:${bg}">${label}</span>`;
+    }).join('');
+}
+
+// ==================== JointJS Custom Shape ====================
+function defineCustomShapes() {
+    joint.shapes.family = {};
+
+    joint.shapes.family.Member = joint.shapes.standard.Rectangle.define('family.Member', {
+        attrs: {
+            body: {
+                rx: 10, ry: 10,
+                fill: '#1a1a1a',
+                stroke: '#4a9eff',
+                strokeWidth: 2,
+                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+            },
+            label: {
+                fill: '#ffffff',
+                fontSize: 14,
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                refX: '50%',
+                refY: 55,
+                textAnchor: 'middle',
+                yAlignment: 'middle',
+            }
+        }
+    }, {
+        markup: [{
+            tagName: 'rect',
+            selector: 'body'
+        }, {
+            tagName: 'image',
+            selector: 'photo'
+        }, {
+            tagName: 'text',
+            selector: 'label'
+        }, {
+            tagName: 'text',
+            selector: 'dates'
+        }, {
+            tagName: 'text',
+            selector: 'badges'
+        }, {
+            tagName: 'text',
+            selector: 'photoIcon'
+        }]
+    });
+}
+
+// ==================== Family Tree Rendering ====================
 async function openFamily(familyId) {
     document.getElementById('family-list-view').style.display = 'none';
     document.getElementById('family-tree-view').style.display = 'flex';
@@ -317,267 +395,536 @@ async function openFamily(familyId) {
     }
 }
 
-// ==================== Feature 4: Badge colors ====================
-function getRelBadge(relType) {
-    const badges = {
-        'spouse': null, // Default, no badge needed
-        'ex_spouse': { label: 'Vợ/Chồng cũ', color: '#ff4d4f', bg: 'rgba(255,77,79,0.15)' },
-        'stepchild': { label: 'Con riêng', color: '#faad14', bg: 'rgba(250,173,20,0.15)' },
-        'step_parent': { label: 'Cha/Mẹ kế', color: '#faad14', bg: 'rgba(250,173,20,0.15)' },
-        'adopted_child': { label: 'Con nuôi', color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
-        'adoptive_parent': { label: 'Cha/Mẹ nuôi', color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
-        'child': null,
-        'parent': null,
-    };
-    return badges[relType] || null;
-}
-
-function buildBadgesHtml(datum) {
-    const relTypes = datum.rel_types || {};
-    const badges = new Set();
-    for (const [id, type] of Object.entries(relTypes)) {
-        const badge = getRelBadge(type);
-        if (badge) badges.add(JSON.stringify(badge));
-    }
-    if (badges.size === 0) return '';
-    return Array.from(badges).map(b => {
-        const { label, color, bg } = JSON.parse(b);
-        return `<span class="rel-badge" style="color:${color};background:${bg}">${label}</span>`;
-    }).join('');
-}
-
 function renderTree(members) {
     const container = document.getElementById('tree-content');
-    container.innerHTML = '<div id="FamilyChart" class="f3" style="width:100%;height:100%;background-color:#0a0a0a;color:#fff;"></div>';
+    container.innerHTML = '<div id="jointjs-canvas" style="width:100%;height:100%;position:relative;"></div>';
 
-    const chartEl = document.getElementById('FamilyChart');
+    // Define custom shapes
+    defineCustomShapes();
 
+    // Create graph and paper
+    graph = new joint.dia.Graph();
+
+    paper = new joint.dia.Paper({
+        el: document.getElementById('jointjs-canvas'),
+        model: graph,
+        width: '100%',
+        height: '100%',
+        gridSize: 10,
+        drawGrid: { name: 'mesh', args: { color: '#1a1a2e' } },
+        background: { color: '#0a0a0a' },
+        interactive: { elementMove: true },
+        linkPinning: false,
+        defaultLink: new joint.shapes.standard.Link({
+            attrs: {
+                line: {
+                    stroke: '#4a9eff',
+                    strokeWidth: 2,
+                    targetMarker: {
+                        'type': 'path',
+                        'd': 'M 6 -3 0 0 6 3 z',
+                        fill: '#4a9eff'
+                    }
+                }
+            }
+        }),
+        defaultConnectionPoint: { name: 'boundary' },
+        snapLinks: { radius: 20 },
+    });
+
+    elementMemberMap = {};
+
+    // Build element map for position lookup
+    const posMap = {};
+    members.forEach(m => {
+        posMap[m.id] = { x: m.pos_x || 0, y: m.pos_y || 0, hasPos: !!(m.pos_x || m.pos_y) };
+    });
+
+    // Auto-layout: compute positions for members without saved positions
+    const positions = computeLayout(members, posMap);
+
+    // Create JointJS elements for each member
+    members.forEach((m, idx) => {
+        const pos = positions[m.id] || { x: 100 + idx * 250, y: 100 };
+        const datum = m.data;
+        const gender = datum.gender || 'M';
+        const strokeColor = gender === 'F' ? '#ff69b4' : '#4a9eff';
+        const bodyFill = gender === 'F' ? '#2a1a2a' : '#1a1a2a';
+
+        // Build date string
+        let dateStr = '';
+        if (datum.birth_date) {
+            dateStr = datum.birth_date;
+            if (!datum.is_alive && datum.death_date) dateStr += ' - ' + datum.death_date;
+            else if (!datum.is_alive) dateStr += ' ✝';
+        }
+
+        // Build badges text
+        const relTypes = m.rel_types || {};
+        const badgeLabels = [];
+        for (const [id, type] of Object.entries(relTypes)) {
+            const badge = getRelBadge(type);
+            if (badge) badgeLabels.push(badge.label);
+        }
+
+        const CARD_W = 200;
+        const CARD_H = 120;
+
+        const attrs = {
+            body: {
+                fill: bodyFill,
+                stroke: strokeColor,
+                strokeWidth: 2,
+                rx: 10,
+                ry: 10,
+            },
+            label: {
+                text: datum.name || 'Thành viên',
+                fill: '#ffffff',
+                fontSize: 14,
+                fontWeight: 'bold',
+                fontFamily: 'Arial, sans-serif',
+                refX: '50%',
+                refY: 60,
+                textAnchor: 'middle',
+                yAlignment: 'middle',
+            },
+            dates: {
+                text: dateStr,
+                fill: '#aaaaaa',
+                fontSize: 11,
+                fontFamily: 'Arial, sans-serif',
+                refX: '50%',
+                refY: 78,
+                textAnchor: 'middle',
+                yAlignment: 'middle',
+            },
+            badges: {
+                text: badgeLabels.join(', '),
+                fill: '#4a9eff',
+                fontSize: 10,
+                fontFamily: 'Arial, sans-serif',
+                refX: '50%',
+                refY: 95,
+                textAnchor: 'middle',
+                yAlignment: 'middle',
+            },
+            photoIcon: {
+                text: gender === 'F' ? '👩' : '👨',
+                fontSize: 28,
+                refX: '50%',
+                refY: 28,
+                textAnchor: 'middle',
+                yAlignment: 'middle',
+            }
+        };
+
+        // If photo exists, use image instead of icon
+        if (datum.photo) {
+            attrs.photo = {
+                'xlink:href': datum.photo,
+                width: 40,
+                height: 40,
+                x: (CARD_W - 40) / 2,
+                y: 8,
+                preserveAspectRatio: 'xMidYMid slice',
+            };
+        }
+
+        const element = new joint.shapes.family.Member({
+            position: { x: pos.x, y: pos.y },
+            size: { width: CARD_W, height: CARD_H },
+            attrs: attrs,
+            id: m.id,
+        });
+
+        element.addTo(graph);
+        elementMemberMap[element.id] = m.id;
+    });
+
+    // Create links for relationships
+    const linkSet = new Set();
+    members.forEach(m => {
+        const fromId = m.id;
+
+        // Spouse links (horizontal)
+        (m.rels.spouses || []).forEach(toId => {
+            const key = [Math.min(fromId, toId), Math.max(fromId, toId)].join('-');
+            if (linkSet.has(key)) return;
+            linkSet.add(key);
+
+            const fromEl = graph.getCell(fromId);
+            const toEl = graph.getCell(toId);
+            if (!fromEl || !toEl) return;
+
+            const link = new joint.shapes.standard.Link({
+                source: { id: fromId },
+                target: { id: toId },
+                attrs: {
+                    line: {
+                        stroke: '#ff69b4',
+                        strokeWidth: 2,
+                        strokeDasharray: '5 3',
+                        targetMarker: null,
+                    }
+                },
+                labels: [{
+                    position: 0.5,
+                    attrs: {
+                        text: {
+                            text: '💑',
+                            fontSize: 14,
+                        },
+                        rect: {
+                            fill: '#0a0a0a',
+                            stroke: '#ff69b4',
+                            strokeWidth: 1,
+                            rx: 8,
+                            ry: 8,
+                        }
+                    }
+                }]
+            });
+            link.addTo(graph);
+        });
+
+        // Parent → child links (vertical)
+        (m.rels.children || []).forEach(toId => {
+            const key = `${fromId}-${toId}`;
+            if (linkSet.has(key)) return;
+            linkSet.add(key);
+
+            const fromEl = graph.getCell(fromId);
+            const toEl = graph.getCell(toId);
+            if (!fromEl || !toEl) return;
+
+            const link = new joint.shapes.standard.Link({
+                source: { id: fromId },
+                target: { id: toId },
+                attrs: {
+                    line: {
+                        stroke: '#4a9eff',
+                        strokeWidth: 2,
+                        targetMarker: {
+                            'type': 'path',
+                            'd': 'M 6 -3 0 0 6 3 z',
+                            fill: '#4a9eff'
+                        }
+                    }
+                },
+                labels: [{
+                    position: 0.5,
+                    attrs: {
+                        text: {
+                            text: '',
+                            fontSize: 10,
+                        },
+                        rect: {
+                            fill: 'transparent',
+                            stroke: 'none',
+                        }
+                    }
+                }]
+            });
+            link.addTo(graph);
+        });
+    });
+
+    // ==================== Event Handlers ====================
+
+    // Click on element → show detail or handle connect mode
+    paper.on('element:pointerclick', (elementView) => {
+        const element = elementView.model;
+        const memberId = elementMemberMap[element.id];
+        if (!memberId) return;
+
+        if (connectMode) {
+            const member = allMembers.find(m => m.id === memberId);
+            if (member) handleConnectClick(memberId, member.data.name);
+            return;
+        }
+
+        showMemberDetail(memberId);
+    });
+
+    // Double-click on element → edit
+    paper.on('element:pointerdblclick', (elementView) => {
+        const element = elementView.model;
+        const memberId = elementMemberMap[element.id];
+        if (!memberId) return;
+        showEditMemberModal(memberId);
+    });
+
+    // Double-click on blank → add new member
+    paper.on('blank:pointerdblclick', (evt, x, y) => {
+        showAddMemberModal(x, y);
+    });
+
+    // Element drag end → save position
+    paper.on('element:pointerup', (elementView) => {
+        const element = elementView.model;
+        const memberId = elementMemberMap[element.id];
+        if (!memberId) return;
+        const pos = element.position();
+        saveMemberPosition(memberId, pos.x, pos.y);
+    });
+
+    // Zoom with mouse wheel
+    paper.on('blank:mousewheel', (evt, x, y, delta) => {
+        evt.preventDefault();
+        const currentScale = paper.scale().sx;
+        const newScale = Math.max(0.2, Math.min(3, currentScale + delta * 0.1));
+        paper.scale(newScale, newScale);
+    });
+
+    paper.on('element:mousewheel', (elementView, evt, x, y, delta) => {
+        evt.preventDefault();
+        const currentScale = paper.scale().sx;
+        const newScale = Math.max(0.2, Math.min(3, currentScale + delta * 0.1));
+        paper.scale(newScale, newScale);
+    });
+
+    // Initial fit to content
+    setTimeout(() => zoomFit(), 100);
+}
+
+// ==================== Auto Layout ====================
+function computeLayout(members, posMap) {
+    const positions = {};
+    const CARD_W = 200;
+    const CARD_H = 120;
+    const H_GAP = 60;
+    const V_GAP = 80;
+
+    // Check if any members have saved positions
+    const anySaved = members.some(m => posMap[m.id] && posMap[m.id].hasPos);
+    if (anySaved) {
+        // Use saved positions
+        members.forEach(m => {
+            if (posMap[m.id] && posMap[m.id].hasPos) {
+                positions[m.id] = { x: posMap[m.id].x, y: posMap[m.id].y };
+            }
+        });
+    }
+
+    // Find members without positions
+    const unpositioned = members.filter(m => !positions[m.id]);
+    if (unpositioned.length === 0) return positions;
+
+    // Build parent-child relationships for tree layout
+    const childrenMap = {};  // parentId → [childId]
+    const parentMap = {};    // childId → [parentId]
+    const spouseMap = {};    // memberId → [spouseId]
+
+    members.forEach(m => {
+        childrenMap[m.id] = m.rels.children || [];
+        spouseMap[m.id] = m.rels.spouses || [];
+        (m.rels.children || []).forEach(cid => {
+            if (!parentMap[cid]) parentMap[cid] = [];
+            parentMap[cid].push(m.id);
+        });
+    });
+
+    // Find roots (no parents)
+    const roots = members.filter(m => {
+        const parents = parentMap[m.id] || [];
+        return parents.length === 0;
+    }).filter(m => !positions[m.id]);
+
+    if (roots.length === 0 && unpositioned.length > 0) {
+        // No clear roots, just lay out linearly
+        unpositioned.forEach((m, i) => {
+            positions[m.id] = { x: 100 + i * (CARD_W + H_GAP), y: 100 };
+        });
+        return positions;
+    }
+
+    // BFS tree layout
+    const visited = new Set();
+    const generationMap = {};  // memberId → generation number
+
+    // Assign generations
+    function assignGen(memberId, gen) {
+        if (visited.has(memberId)) return;
+        visited.add(memberId);
+        generationMap[memberId] = gen;
+
+        // Spouses get same generation
+        (spouseMap[memberId] || []).forEach(sid => {
+            if (!visited.has(sid)) {
+                visited.add(sid);
+                generationMap[sid] = gen;
+            }
+        });
+
+        // Children get gen+1
+        (childrenMap[memberId] || []).forEach(cid => {
+            assignGen(cid, gen + 1);
+        });
+    }
+
+    roots.forEach(r => assignGen(r.id, 0));
+
+    // Also assign unvisited members
+    unpositioned.forEach(m => {
+        if (!visited.has(m.id)) {
+            assignGen(m.id, 0);
+        }
+    });
+
+    // Group by generation
+    const generations = {};
+    Object.entries(generationMap).forEach(([id, gen]) => {
+        if (!generations[gen]) generations[gen] = [];
+        generations[gen].push(id);
+    });
+
+    // Position each generation
+    const genKeys = Object.keys(generations).map(Number).sort((a, b) => a - b);
+    let maxX = 0;
+
+    genKeys.forEach(gen => {
+        const ids = generations[gen];
+        const y = 50 + gen * (CARD_H + V_GAP);
+        let x = 50;
+
+        ids.forEach(id => {
+            if (positions[id]) {
+                x = Math.max(x, positions[id].x + CARD_W + H_GAP);
+                return;
+            }
+            positions[id] = { x, y };
+            x += CARD_W + H_GAP;
+        });
+
+        maxX = Math.max(maxX, x);
+    });
+
+    return positions;
+}
+
+// ==================== Save position ====================
+async function saveMemberPosition(memberId, x, y) {
     try {
-        const f3Chart = f3.createChart('#FamilyChart', members)
-            .setTransitionTime(200)
-            .setCardXSpacing(250)
-            .setCardYSpacing(150);
-
-        const card = f3Chart.setCardHtml()
-            .setCardDisplay([['name'], ['birth_date', 'death_date']])
-            .setMiniTree(true)
-            .setOnHoverPathToMain()
-            .setCardInnerHtmlCreator((d) => {
-                const datum = d.data || d;
-                const photo = datum.photo || '';
-                const name = datum.name || 'Thành viên';
-                const birthDate = datum.birth_date || '';
-                const deathDate = datum.death_date || '';
-                const gender = datum.gender || 'M';
-                const isAlive = datum.is_alive;
-                const badgesHtml = buildBadgesHtml(datum);
-
-                let photoHtml = '';
-                if (photo) {
-                    photoHtml = `<div class="card-photo"><img src="${esc(photo)}" alt="" onerror="this.style.display='none'"></div>`;
-                } else {
-                    photoHtml = `<div class="card-photo card-photo-placeholder">${gender === 'F' ? '👩' : '👨'}</div>`;
-                }
-
-                let dateStr = '';
-                if (birthDate) {
-                    dateStr = birthDate;
-                    if (!isAlive && deathDate) dateStr += ' - ' + deathDate;
-                    else if (!isAlive) dateStr += ' ✝';
-                }
-
-                return `
-                    <div class="custom-card ${gender === 'F' ? 'card-female' : 'card-male'}" data-member-id="${datum.id}">
-                        ${photoHtml}
-                        <div class="card-info">
-                            <div class="card-name">${esc(name)}</div>
-                            ${dateStr ? `<div class="card-dates">${esc(dateStr)}</div>` : ''}
-                            ${badgesHtml ? `<div class="card-badges">${badgesHtml}</div>` : ''}
-                        </div>
-                        <div class="card-actions">
-                            <button class="card-btn" onclick="event.stopPropagation();showMemberDetail(${datum.id})" title="Chi tiết">ℹ️</button>
-                            <button class="card-btn" onclick="event.stopPropagation();showPhotoUpload(${datum.id})" title="Ảnh">📷</button>
-                        </div>
-                    </div>
-                `;
-            });
-
-        editTreeInstance = f3Chart.editTree()
-            .setFields([
-                { id: 'name', type: 'text', label: 'Họ và tên' },
-                { id: 'gender', type: 'select', label: 'Giới tính', options: [{ value: 'M', label: 'Nam' }, { value: 'F', label: 'Nữ' }] },
-                { id: 'birth_date', type: 'text', label: 'Năm sinh' },
-                { id: 'death_date', type: 'text', label: 'Năm mất' },
-                { id: 'birth_place', type: 'text', label: 'Nơi sinh' },
-                { id: 'occupation', type: 'text', label: 'Nghề nghiệp' },
-                { id: 'bio', type: 'text', label: 'Tiểu sử' },
-            ])
-            .setAddRelLabels({
-                father: 'Thêm cha',
-                mother: 'Thêm mẹ',
-                spouse: 'Thêm vợ/chồng',
-                son: 'Thêm con trai',
-                daughter: 'Thêm con gái',
-            })
-            .setOnSubmit(async (e, datum, applyChanges, postSubmit) => {
-                try {
-                    const formData = new FormData(e.target);
-                    const data = {};
-                    formData.forEach((v, k) => { data[k] = v; });
-
-                    if (datum.id && !datum._new) {
-                        await api(`/api/members/${datum.id}`, {
-                            method: 'PUT',
-                            body: JSON.stringify({
-                                full_name: data.name || datum.name,
-                                gender: data.gender || datum.gender,
-                                birth_date: data.birth_date || datum.birth_date,
-                                death_date: data.death_date || datum.death_date,
-                                birth_place: data.birth_place || datum.birth_place,
-                                occupation: data.occupation || datum.occupation,
-                                bio: data.bio || datum.bio,
-                            }),
-                        });
-                        toast('Đã cập nhật thành viên', 'success');
-                    } else {
-                        const res = await api(`/api/families/${currentFamily.id}/members`, {
-                            method: 'POST',
-                            body: JSON.stringify({
-                                full_name: data.name || 'Thành viên mới',
-                                gender: data.gender || 'M',
-                                birth_date: data.birth_date || '',
-                                death_date: data.death_date || '',
-                                birth_place: data.birth_place || '',
-                                occupation: data.occupation || '',
-                                bio: data.bio || '',
-                            }),
-                        });
-                        datum.id = String(res.id);
-                        toast('Đã thêm thành viên mới', 'success');
-                    }
-
-                    if (datum.rels) {
-                        await syncRelationships(datum);
-                    }
-
-                    applyChanges();
-                    postSubmit();
-                } catch (err) {
-                    toast('Lỗi lưu: ' + err.message, 'error');
-                    postSubmit();
-                }
-            })
-            .setOnDelete(async (datum, deletePerson, postSubmit) => {
-                if (!confirm(`Xóa thành viên "${datum.name}"?`)) {
-                    postSubmit();
-                    return;
-                }
-                try {
-                    await api(`/api/members/${datum.id}`, { method: 'DELETE' });
-                    deletePerson();
-                    toast('Đã xóa thành viên', 'success');
-                } catch (err) {
-                    toast('Lỗi xóa: ' + err.message, 'error');
-                    postSubmit();
-                }
-            });
-
-        f3Chart.updateTree({ initial: true });
-        chartInstance = f3Chart;
-
-        // Feature 9: Add click handlers for connect mode
-        setTimeout(() => {
-            document.querySelectorAll('.custom-card').forEach(card => {
-                card.addEventListener('click', (e) => {
-                    if (!connectMode) return;
-                    e.stopPropagation();
-                    const memberId = card.dataset.memberId;
-                    const member = allMembers.find(m => m.id === memberId);
-                    if (!member) return;
-                    handleConnectClick(memberId, member.data.name);
-                });
-            });
-        }, 500);
-
+        await api(`/api/members/${memberId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ pos_x: Math.round(x), pos_y: Math.round(y) }),
+        });
     } catch (e) {
-        console.error('Chart error:', e);
-        container.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Lỗi hiển thị</h3><p>${esc(e.message)}</p></div>`;
+        console.warn('Failed to save position:', e);
     }
 }
 
-async function syncRelationships(datum) {
-    if (!datum.rels) return;
-    const memberId = datum.id;
-    const familyData = await api(`/api/families/${currentFamily.id}/members`);
-    const existingMember = familyData.members.find(m => m.id === String(memberId));
-    if (!existingMember) return;
-
-    const existingRels = existingMember.rels;
-    const newSpouses = new Set(datum.rels.spouses || []);
-    const newChildren = new Set(datum.rels.children || []);
-    const newParents = new Set(datum.rels.parents || []);
-
-    for (const sp of newSpouses) {
-        if (!(existingRels.spouses || []).includes(sp)) {
-            try {
-                await api(`/api/members/${memberId}/relationships`, {
-                    method: 'POST',
-                    body: JSON.stringify({ to_member_id: parseInt(sp), relationship_type: 'spouse' }),
-                });
-            } catch (e) { console.warn('sync spouse err:', e); }
-        }
-    }
-    for (const ch of newChildren) {
-        if (!(existingRels.children || []).includes(ch)) {
-            try {
-                await api(`/api/members/${memberId}/relationships`, {
-                    method: 'POST',
-                    body: JSON.stringify({ to_member_id: parseInt(ch), relationship_type: 'child' }),
-                });
-            } catch (e) { console.warn('sync child err:', e); }
-        }
-    }
-    for (const p of newParents) {
-        if (!(existingRels.parents || []).includes(p)) {
-            try {
-                await api(`/api/members/${memberId}/relationships`, {
-                    method: 'POST',
-                    body: JSON.stringify({ to_member_id: parseInt(p), relationship_type: 'parent' }),
-                });
-            } catch (e) { console.warn('sync parent err:', e); }
-        }
-    }
+// ==================== Zoom Controls ====================
+function zoomIn() {
+    if (!paper) return;
+    const currentScale = paper.scale().sx;
+    const newScale = Math.min(3, currentScale + 0.2);
+    paper.scale(newScale, newScale);
 }
 
-// ==================== Add Member Modal ====================
-function showAddMemberModal() {
+function zoomOut() {
+    if (!paper) return;
+    const currentScale = paper.scale().sx;
+    const newScale = Math.max(0.2, currentScale - 0.2);
+    paper.scale(newScale, newScale);
+}
+
+function zoomFit() {
+    if (!paper || !graph) return;
+    paper.scale(1, 1);
+    paper.fitToContent({
+        padding: 60,
+        allowNewOrigin: 'any',
+    });
+}
+
+// ==================== Add/Edit Member Modal ====================
+let addMemberPosX = null;
+let addMemberPosY = null;
+
+function showAddMemberModal(x, y) {
+    editingMemberId = null;
+    addMemberPosX = x || null;
+    addMemberPosY = y || null;
+    document.getElementById('member-modal-title').textContent = 'Thêm thành viên';
     document.getElementById('member-name-input').value = '';
     document.getElementById('member-gender-input').value = 'M';
     document.getElementById('member-birth-input').value = '';
     document.getElementById('member-death-input').value = '';
     document.getElementById('member-birthplace-input').value = '';
     document.getElementById('member-occupation-input').value = '';
+    document.getElementById('btn-save-member').textContent = 'Thêm';
+    document.getElementById('btn-delete-member').style.display = 'none';
     openModal('modal-add-member');
 }
 
-async function addFirstMember() {
+function showEditMemberModal(memberId) {
+    const member = allMembers.find(m => m.id === memberId);
+    if (!member) return;
+    editingMemberId = memberId;
+    addMemberPosX = null;
+    addMemberPosY = null;
+    const datum = member.data;
+    document.getElementById('member-modal-title').textContent = 'Sửa thành viên';
+    document.getElementById('member-name-input').value = datum.name || '';
+    document.getElementById('member-gender-input').value = datum.gender || 'M';
+    document.getElementById('member-birth-input').value = datum.birth_date || '';
+    document.getElementById('member-death-input').value = datum.death_date || '';
+    document.getElementById('member-birthplace-input').value = datum.birth_place || '';
+    document.getElementById('member-occupation-input').value = datum.occupation || '';
+    document.getElementById('btn-save-member').textContent = 'Lưu';
+    document.getElementById('btn-delete-member').style.display = currentFamily.owned ? '' : 'none';
+    openModal('modal-add-member');
+}
+
+async function saveMember() {
     const name = document.getElementById('member-name-input').value.trim();
     if (!name) return toast('Nhập họ tên', 'error');
 
+    const data = {
+        full_name: name,
+        gender: document.getElementById('member-gender-input').value,
+        birth_date: document.getElementById('member-birth-input').value.trim(),
+        death_date: document.getElementById('member-death-input').value.trim(),
+        birth_place: document.getElementById('member-birthplace-input').value.trim(),
+        occupation: document.getElementById('member-occupation-input').value.trim(),
+    };
+
     try {
-        await api(`/api/families/${currentFamily.id}/members`, {
-            method: 'POST',
-            body: JSON.stringify({
-                full_name: name,
-                gender: document.getElementById('member-gender-input').value,
-                birth_date: document.getElementById('member-birth-input').value.trim(),
-                death_date: document.getElementById('member-death-input').value.trim(),
-                birth_place: document.getElementById('member-birthplace-input').value.trim(),
-                occupation: document.getElementById('member-occupation-input').value.trim(),
-            }),
-        });
+        if (editingMemberId) {
+            await api(`/api/members/${editingMemberId}`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            });
+            toast('Đã cập nhật thành viên', 'success');
+        } else {
+            if (addMemberPosX !== null) {
+                data.pos_x = Math.round(addMemberPosX);
+                data.pos_y = Math.round(addMemberPosY);
+            }
+            await api(`/api/families/${currentFamily.id}/members`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+            toast('Đã thêm thành viên!', 'success');
+        }
         closeModal('modal-add-member');
-        toast('Đã thêm thành viên!', 'success');
+        openFamily(currentFamily.id);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function deleteCurrentMember() {
+    if (!editingMemberId) return;
+    const member = allMembers.find(m => m.id === editingMemberId);
+    const name = member ? member.data.name : 'thành viên này';
+    if (!confirm(`Xóa "${name}"?`)) return;
+    try {
+        await api(`/api/members/${editingMemberId}`, { method: 'DELETE' });
+        closeModal('modal-add-member');
+        toast('Đã xóa thành viên', 'success');
         openFamily(currentFamily.id);
     } catch (e) {
         toast(e.message, 'error');
@@ -598,21 +945,21 @@ async function seedFamily(familyId) {
 function goBackToList() {
     document.getElementById('family-list-view').style.display = 'block';
     document.getElementById('family-tree-view').style.display = 'none';
-    // Reset connect mode
     connectMode = false;
     connectFirst = null;
     document.getElementById('connect-status').style.display = 'none';
+    graph = null;
+    paper = null;
     loadFamilies();
 }
 
-// ==================== Feature 1: Photo Upload ====================
+// ==================== Photo Upload ====================
 function showPhotoUpload(memberId) {
     photoUploadMemberId = memberId;
     document.getElementById('photo-file-input').value = '';
     document.getElementById('photo-preview').innerHTML = '';
     openModal('modal-photo-upload');
 
-    // Preview on file select
     document.getElementById('photo-file-input').onchange = function() {
         const file = this.files[0];
         if (!file) return;
@@ -641,14 +988,13 @@ async function uploadPhoto() {
         await apiUpload(`/api/members/${photoUploadMemberId}/photo`, formData);
         closeModal('modal-photo-upload');
         toast('Đã upload ảnh!', 'success');
-        // Refresh tree
         openFamily(currentFamily.id);
     } catch (e) {
         toast(e.message, 'error');
     }
 }
 
-// ==================== Feature 8: Member Detail ====================
+// ==================== Member Detail ====================
 async function showMemberDetail(memberId) {
     try {
         const member = await api(`/api/members/${memberId}`);
@@ -725,17 +1071,10 @@ async function showMemberDetail(memberId) {
 function editFromDetail() {
     if (!currentDetailMemberId) return;
     closeModal('modal-member-detail');
-    // Trigger the family-chart edit form
-    // Find the card and trigger edit
-    const card = document.querySelector(`[data-member-id="${currentDetailMemberId}"]`);
-    if (card) {
-        card.click();
-    } else {
-        toast('Click vào thẻ thành viên trên cây để sửa', 'info');
-    }
+    showEditMemberModal(currentDetailMemberId);
 }
 
-// ==================== Feature 2: Search ====================
+// ==================== Search ====================
 function debounceSearch() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(searchMembers, 300);
@@ -748,7 +1087,11 @@ async function searchMembers() {
     if (!q) {
         resultsEl.style.display = 'none';
         // Remove highlights
-        document.querySelectorAll('.custom-card.search-match').forEach(c => c.classList.remove('search-match'));
+        if (graph) {
+            graph.getElements().forEach(el => {
+                el.attr('body/strokeWidth', 2);
+            });
+        }
         return;
     }
 
@@ -766,11 +1109,14 @@ async function searchMembers() {
         }
         resultsEl.style.display = 'block';
 
-        // Highlight matching cards on tree
-        document.querySelectorAll('.custom-card').forEach(c => c.classList.remove('search-match'));
-        for (const m of results) {
-            const card = document.querySelector(`[data-member-id="${m.id}"]`);
-            if (card) card.classList.add('search-match');
+        // Highlight matching elements
+        if (graph) {
+            graph.getElements().forEach(el => {
+                const memberId = elementMemberMap[el.id];
+                const isMatch = results.some(m => m.id === memberId);
+                el.attr('body/strokeWidth', isMatch ? 4 : 2);
+                el.attr('body/stroke', isMatch ? '#faad14' : (el.attr('body/stroke')));
+            });
         }
     } catch (e) {
         console.warn('search error:', e);
@@ -779,22 +1125,40 @@ async function searchMembers() {
 
 function highlightMember(memberId) {
     document.getElementById('search-results').style.display = 'none';
-    const card = document.querySelector(`[data-member-id="${memberId}"]`);
-    if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.classList.add('search-highlight');
-        setTimeout(() => card.classList.remove('search-highlight'), 2000);
+    // Find and center on element
+    if (graph) {
+        const element = graph.getElements().find(el => elementMemberMap[el.id] === memberId);
+        if (element) {
+            const pos = element.position();
+            const scale = paper.scale().sx;
+            const elW = element.attributes.size.width;
+            const elH = element.attributes.size.height;
+            // Center the element in the viewport
+            const containerRect = document.getElementById('jointjs-canvas').getBoundingClientRect();
+            const tx = containerRect.width / 2 - (pos.x + elW / 2) * scale;
+            const ty = containerRect.height / 2 - (pos.y + elH / 2) * scale;
+            paper.translate(tx, ty);
+
+            // Flash highlight
+            element.attr('body/stroke', '#faad14');
+            element.attr('body/strokeWidth', 4);
+            setTimeout(() => {
+                element.attr('body/strokeWidth', 2);
+                const gender = allMembers.find(m => m.id === memberId)?.data?.gender;
+                element.attr('body/stroke', gender === 'F' ? '#ff69b4' : '#4a9eff');
+            }, 2000);
+        }
     }
 }
 
-// ==================== Feature 3: Export ====================
+// ==================== Export ====================
 function exportFamily() {
     if (!currentFamily) return;
     window.open(`/api/families/${currentFamily.id}/export`, '_blank');
     toast('Đang xuất file...', 'info');
 }
 
-// ==================== Feature 9: Connect Mode ====================
+// ==================== Connect Mode ====================
 function toggleConnectMode() {
     connectMode = !connectMode;
     connectFirst = null;
@@ -805,15 +1169,16 @@ function toggleConnectMode() {
         btn.classList.add('btn-active');
         status.style.display = 'flex';
         status.querySelector('span').textContent = '🔗 Chế độ kết nối: Click người thứ nhất...';
-        document.querySelectorAll('.custom-card').forEach(c => c.classList.add('connectable'));
         toast('Bật chế độ kết nối. Click vào 2 người để kết nối.', 'info');
     } else {
         btn.classList.remove('btn-active');
         status.style.display = 'none';
-        document.querySelectorAll('.custom-card').forEach(c => {
-            c.classList.remove('connectable');
-            c.classList.remove('connect-selected');
-        });
+        // Reset highlight
+        if (graph) {
+            graph.getElements().forEach(el => {
+                el.attr('body/strokeWidth', 2);
+            });
+        }
     }
 }
 
@@ -821,31 +1186,46 @@ function handleConnectClick(memberId, memberName) {
     if (!connectMode) return;
 
     if (!connectFirst) {
-        // First selection
         connectFirst = { id: memberId, name: memberName };
-        document.querySelectorAll('.custom-card').forEach(c => c.classList.remove('connect-selected'));
-        const card = document.querySelector(`[data-member-id="${memberId}"]`);
-        if (card) card.classList.add('connect-selected');
+        // Highlight first selection
+        if (graph) {
+            const el = graph.getElements().find(e => elementMemberMap[e.id] === memberId);
+            if (el) {
+                el.attr('body/stroke', '#00d68f');
+                el.attr('body/strokeWidth', 4);
+            }
+        }
         document.getElementById('connect-status').querySelector('span').textContent =
             `🔗 Đã chọn: ${memberName} → Click người thứ hai...`;
     } else if (connectFirst.id === memberId) {
-        // Clicked same person, deselect
         connectFirst = null;
-        document.querySelectorAll('.custom-card').forEach(c => c.classList.remove('connect-selected'));
+        if (graph) {
+            graph.getElements().forEach(el => {
+                el.attr('body/strokeWidth', 2);
+                const mid = elementMemberMap[el.id];
+                const gender = allMembers.find(m => m.id === mid)?.data?.gender;
+                el.attr('body/stroke', gender === 'F' ? '#ff69b4' : '#4a9eff');
+            });
+        }
         document.getElementById('connect-status').querySelector('span').textContent =
             '🔗 Chế độ kết nối: Click người thứ nhất...';
     } else {
-        // Second selection - show relationship picker
         document.getElementById('connect-desc').textContent =
             `Kết nối "${connectFirst.name}" → "${memberName}" với quan hệ:`;
         openModal('modal-connect');
 
-        // Store for use in createConnection
         window._connectFrom = connectFirst.id;
         window._connectTo = memberId;
 
-        // Reset visual
-        document.querySelectorAll('.custom-card').forEach(c => c.classList.remove('connect-selected'));
+        // Reset highlight
+        if (graph) {
+            graph.getElements().forEach(el => {
+                el.attr('body/strokeWidth', 2);
+                const mid = elementMemberMap[el.id];
+                const gender = allMembers.find(m => m.id === mid)?.data?.gender;
+                el.attr('body/stroke', gender === 'F' ? '#ff69b4' : '#4a9eff');
+            });
+        }
         connectFirst = null;
         document.getElementById('connect-status').querySelector('span').textContent =
             '🔗 Chế độ kết nối: Click người thứ nhất...';

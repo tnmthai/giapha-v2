@@ -76,6 +76,8 @@ class Member(Base):
     bio = Column(Text)
     photo = Column(String(500))
     is_alive = Column(Boolean, default=True)
+    pos_x = Column(Integer, default=0)
+    pos_y = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
 
     family = relationship("Family", back_populates="members")
@@ -109,6 +111,15 @@ def create_tables():
         if 'shared_with' not in existing_cols:
             with engine.connect() as conn:
                 conn.execute(text('ALTER TABLE families ADD COLUMN shared_with JSONB DEFAULT \'[]\'::jsonb'))
+                conn.commit()
+        existing_member_cols = {c['name'] for c in inspector.get_columns('members')}
+        if 'pos_x' not in existing_member_cols:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE members ADD COLUMN pos_x INTEGER DEFAULT 0'))
+                conn.commit()
+        if 'pos_y' not in existing_member_cols:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE members ADD COLUMN pos_y INTEGER DEFAULT 0'))
                 conn.commit()
     except Exception as e:
         print(f"Migration warning: {e}")
