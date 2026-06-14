@@ -61,6 +61,15 @@ function initDB() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  
+  // Seed demo account
+  const demo = db.prepare('SELECT id FROM users WHERE username = ?').get('demo');
+  if (!demo) {
+    const hash = bcrypt.hashSync('demo123', 10);
+    db.prepare('INSERT INTO users (username, password, full_name) VALUES (?, ?, ?)').run('demo', hash, 'Demo User');
+    console.log('Demo account created: demo / demo123');
+  }
+  
   console.log('Database initialized');
 }
 
@@ -69,8 +78,7 @@ app.post('/api/register', (req, res) => {
   const { username, password, full_name } = req.body;
   const hash = bcrypt.hashSync(password, 10);
   try {
-    const stmt = db.prepare('INSERT INTO users (username, password, full_name) VALUES (?, ?, ?)');
-    const result = stmt.run(username, hash, full_name);
+    const result = db.prepare('INSERT INTO users (username, password, full_name) VALUES (?, ?, ?)').run(username, hash, full_name);
     const user = { id: result.lastInsertRowid, username, full_name };
     const token = jwt.sign({ id: user.id, username }, JWT_SECRET);
     res.json({ user, token });
@@ -98,7 +106,7 @@ app.get('/api/members', auth, (req, res) => {
 app.post('/api/members', auth, (req, res) => {
   const { name, birth_year, death_year, gender, occupation, generation, notes } = req.body;
   const stmt = db.prepare('INSERT INTO family_members (user_id, name, birth_year, death_year, gender, occupation, generation, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-  const result = stmt.run(req.user.id, name, birth_year, death_year, gender, occupation, generation || 0, notes);
+  const result = stmt.run(req.user.id, name, birth_year || null, death_year || null, gender, occupation || null, generation || 0, notes || null);
   const member = db.prepare('SELECT * FROM family_members WHERE id = ?').get(result.lastInsertRowid);
   res.json(member);
 });
@@ -106,7 +114,7 @@ app.post('/api/members', auth, (req, res) => {
 app.put('/api/members/:id', auth, (req, res) => {
   const { name, birth_year, death_year, gender, occupation, generation, notes } = req.body;
   db.prepare('UPDATE family_members SET name=?, birth_year=?, death_year=?, gender=?, occupation=?, generation=?, notes=? WHERE id=? AND user_id=?')
-    .run(name, birth_year, death_year, gender, occupation, generation, notes, req.params.id, req.user.id);
+    .run(name, birth_year || null, death_year || null, gender, occupation || null, generation || 0, notes || null, req.params.id, req.user.id);
   const member = db.prepare('SELECT * FROM family_members WHERE id = ?').get(req.params.id);
   res.json(member);
 });
