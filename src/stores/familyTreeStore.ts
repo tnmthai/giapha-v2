@@ -124,10 +124,10 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
       method: 'POST',
       body: JSON.stringify({
         name: fullName,
-        birth_year: person.birthDate ? parseInt(person.birthDate) : null,
-        death_year: person.deathDate ? parseInt(person.deathDate) : null,
+        birth_year: person.birthDate && !isNaN(parseInt(person.birthDate)) ? parseInt(person.birthDate) : null,
+        death_year: person.deathDate && !isNaN(parseInt(person.deathDate)) ? parseInt(person.deathDate) : null,
         gender: person.gender,
-        occupation: person.occupation,
+        occupation: person.occupation || null,
       }),
     }).then(result => {
       const dbId = result?.id;
@@ -165,10 +165,10 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
             method: 'PUT',
             body: JSON.stringify({
               name: fullName,
-              birth_year: updated.birthDate ? parseInt(updated.birthDate) : null,
-              death_year: updated.deathDate ? parseInt(updated.deathDate) : null,
+              birth_year: updated.birthDate && !isNaN(parseInt(updated.birthDate)) ? parseInt(updated.birthDate) : null,
+              death_year: updated.deathDate && !isNaN(parseInt(updated.deathDate)) ? parseInt(updated.deathDate) : null,
               gender: updated.gender,
-              occupation: updated.occupation,
+              occupation: updated.occupation || null,
             }),
           });
         }
