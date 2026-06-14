@@ -30,6 +30,7 @@ const FamilyTreeCanvas: React.FC = () => {
     showGrid,
     theme,
     addParentChild,
+    addMarriage,
     selectPerson,
   } = useFamilyTreeStore();
 
@@ -113,16 +114,39 @@ const FamilyTreeCanvas: React.FC = () => {
 
   const onConnect = useCallback(
     (params: Connection) => {
-      const newEdge = {
-        ...params,
-        id: generateId(),
-        type: 'relationship',
-        data: { type: 'parent_child' },
-      };
-
-      setEdges((eds) => addEdge(newEdge, eds));
-
-      if (params.source && params.target) {
+      if (!params.source || !params.target) return;
+      
+      // Ask user for relationship type
+      const relType = prompt(
+        'Chọn loại quan hệ:\n1 = Vợ/Chồng\n2 = Con (mặc định)\n\nNhập số:',
+        '2'
+      );
+      
+      if (relType === '1') {
+        // Marriage relationship
+        const newEdge = {
+          ...params,
+          id: generateId(),
+          type: 'relationship',
+          data: { type: 'marriage', label: 'Vợ/Chồng' },
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
+        addMarriage({
+          id: generateId(),
+          person1Id: params.source,
+          person2Id: params.target,
+          type: 'marriage',
+          status: 'married',
+        });
+      } else {
+        // Parent-child relationship
+        const newEdge = {
+          ...params,
+          id: generateId(),
+          type: 'relationship',
+          data: { type: 'parent_child', label: 'Con' },
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
         addParentChild({
           id: generateId(),
           parentId: params.source,
@@ -131,7 +155,7 @@ const FamilyTreeCanvas: React.FC = () => {
         });
       }
     },
-    [setEdges, addParentChild]
+    [setEdges, addParentChild, addMarriage]
   );
 
   const onEdgeClick = useCallback((_: React.MouseEvent, edge: any) => {
