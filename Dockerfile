@@ -2,14 +2,16 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies for server
-COPY package-server.json package.json
+# Copy backend dependencies
+COPY package-prod.json package.json
 RUN npm install
 
-# Copy built files
+# Copy backend code
+COPY backend/ backend/
+
+# Copy built frontend
 COPY dist/ dist/
-COPY server.js .
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "backend/server.js"]
