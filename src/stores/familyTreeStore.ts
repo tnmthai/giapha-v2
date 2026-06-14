@@ -11,6 +11,24 @@ import type {
   ThemeType
 } from '../types';
 
+// API helper
+const getAuthToken = () => localStorage.getItem('token') || '';
+
+async function apiCall(url: string, options: RequestInit = {}) {
+  const token = getAuthToken();
+  if (!token) return null;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // ==================== State Interface ====================
 
 interface FamilyTreeState {
@@ -105,6 +123,30 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
       newPersons.set(person.id, person);
       return { persons: newPersons };
     });
+    // Save to backend
+    const fullName = `${person.lastName} ${person.firstName}`.trim();
+    apiCall('/api/members', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: fullName,
+        birth_year: person.birthDate ? parseInt(person.birthDate) : null,
+        death_year: person.deathDate ? parseInt(person.deathDate) : null,
+        gender: person.gender,
+        occupation: person.occupation,
+      }),
+    }).then(result => {
+      if (result) {
+        // Store the DB id in customFields
+        set((state) => {
+          const newPersons = new Map(state.persons);
+          const existing = newPersons.get(person.id);
+          if (existing) {
+            newPersons.set(person.id, { ...existing, customFields: { ...existing.customFields, dbId: result.id } });
+          }
+          return { persons: newPersons };
+        });
+      }
+    });
     get().addHistoryEntry({
       action: 'add_person',
       description: `Added ${person.firstName} ${person.lastName}`,
@@ -118,6 +160,22 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
       const existing = newPersons.get(id);
       if (existing) {
         newPersons.set(id, { ...existing, ...updates, updatedAt: new Date().toISOString() });
+        // Save to backend
+        const updated = { ...existing, ...updates };
+        const fullName = `${updated.lastName} ${updated.firstName}`.trim();
+        const dbId = existing.customFields?.dbId;
+        if (dbId) {
+          apiCall(`/api/members/${dbId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              name: fullName,
+              birth_year: updated.birthDate ? parseInt(updated.birthDate) : null,
+              death_year: updated.deathDate ? parseInt(updated.deathDate) : null,
+              gender: updated.gender,
+              occupation: updated.occupation,
+            }),
+          });
+        }
       }
       return { persons: newPersons };
     });
@@ -129,11 +187,15 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
   },
   
   deletePerson: (id) => {
+    const person = get().persons.get(id);
+    const dbId = person?.customFields?.dbId;
+    if (dbId) {
+      apiCall(`/api/members/${dbId}`, { method: 'DELETE' });
+    }
     set((state) => {
       const newPersons = new Map(state.persons);
       newPersons.delete(id);
       
-      // Remove related relationships
       const newParentChild = new Map(state.parentChildRelations);
       newParentChild.forEach((rel, key) => {
         if (rel.parentId === id || rel.childId === id) {
@@ -178,6 +240,17 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
       newRels.set(rel.id, rel);
       return { parentChildRelations: newRels };
     });
+    // Save to backend
+    const parentPerson = get().persons.get(rel.parentId);
+    const childPerson = get().persons.get(rel.childId);
+    const fromDbId = parentPerson?.customFields?.dbId;
+    const toDbId = childPerson?.customFields?.dbId;
+    if (fromDbId && toDbId) {
+      apiCall('/api/relationships', {
+        method: 'POST',
+        body: JSON.stringify({ from_id: fromDbId, to_id: toDbId, type: 'parent_child', label: 'Con' }),
+      });
+    }
     get().addHistoryEntry({
       action: 'add_relationship',
       description: `Added parent-child relationship`,
@@ -191,6 +264,17 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
       newRels.set(rel.id, rel);
       return { marriageRelations: newRels };
     });
+    // Save to backend
+    const p1 = get().persons.get(rel.person1Id);
+    const p2 = get().persons.get(rel.person2Id);
+    const dbId1 = p1?.customFields?.dbId;
+    const dbId2 = p2?.customFields?.dbId;
+    if (dbId1 && dbId2) {
+      apiCall('/api/relationships', {
+        method: 'POST',
+        body: JSON.stringify({ from_id: dbId1, to_id: dbId2, type: 'marriage', label: 'Vợ/Chồng' }),
+      });
+    }
     get().addHistoryEntry({
       action: 'add_marriage',
       description: `Added marriage relationship`,
