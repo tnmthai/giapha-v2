@@ -21,7 +21,7 @@ interface PersonNodeProps {
 const PersonNode: React.FC<PersonNodeProps> = ({ data, selected }) => {
   const { person } = data;
   
-  const fullName = `${person.firstName} ${person.lastName}`.trim();
+  const fullName = `${person.lastName} ${person.firstName}`.trim();
   const genderColor = person.gender === 'female' ? '#ff69b4' : '#4a9eff';
   const bgColor = '#1a1a2e';
   const borderColor = selected ? '#4a9eff' : genderColor;
@@ -81,19 +81,11 @@ const PersonNode: React.FC<PersonNodeProps> = ({ data, selected }) => {
         {fullName}
       </div>
       
-      {/* Dates */}
+      {/* Years */}
       {person.birthDate && (
-        <div style={{ textAlign: 'center', fontSize: '11px', color: '#888', marginBottom: '4px' }}>
-          {person.birthDate}
-          {person.deathDate && ` - ${person.deathDate}`}
+        <div style={{ textAlign: 'center', fontSize: '12px', color: '#aaa', marginBottom: '4px' }}>
+          {person.birthDate}{person.deathDate ? ` - ${person.deathDate}` : ''}
           {!person.isAlive && ' ✝'}
-        </div>
-      )}
-      
-      {/* Age */}
-      {age !== null && (
-        <div style={{ textAlign: 'center', fontSize: '11px', color: '#666' }}>
-          {age} years
         </div>
       )}
       
