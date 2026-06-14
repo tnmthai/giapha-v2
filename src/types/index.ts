@@ -33,7 +33,7 @@ export interface Person {
   createdAt: string;
   updatedAt: string;
   tags: string[];
-  customFields: Record<string, string>;
+  customFields: Record<string, any>;
 }
 
 // ==================== Relationship Types ====================

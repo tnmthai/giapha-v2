@@ -125,6 +125,9 @@ app.get('/api/relationships', auth, (req, res) => {
 
 app.post('/api/relationships', auth, (req, res) => {
   const { from_id, to_id, type, label } = req.body;
+  if (!from_id || !to_id) {
+    return res.status(400).json({ error: 'from_id and to_id are required' });
+  }
   const stmt = db.prepare('INSERT INTO relationships (user_id, from_id, to_id, type, label) VALUES (?, ?, ?, ?, ?)');
   const result = stmt.run(req.user.id, from_id, to_id, type, label);
   const rel = db.prepare('SELECT * FROM relationships WHERE id = ?').get(result.lastInsertRowid);

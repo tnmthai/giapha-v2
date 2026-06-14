@@ -118,12 +118,7 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
   
   // Person CRUD
   addPerson: (person) => {
-    set((state) => {
-      const newPersons = new Map(state.persons);
-      newPersons.set(person.id, person);
-      return { persons: newPersons };
-    });
-    // Save to backend
+    // Save to backend first, then set dbId
     const fullName = `${person.lastName} ${person.firstName}`.trim();
     apiCall('/api/members', {
       method: 'POST',
@@ -135,17 +130,18 @@ export const useFamilyTreeStore = create<FamilyTreeState>((set, get) => ({
         occupation: person.occupation,
       }),
     }).then(result => {
-      if (result) {
-        // Store the DB id in customFields
-        set((state) => {
-          const newPersons = new Map(state.persons);
-          const existing = newPersons.get(person.id);
-          if (existing) {
-            newPersons.set(person.id, { ...existing, customFields: { ...existing.customFields, dbId: result.id } });
-          }
-          return { persons: newPersons };
-        });
-      }
+      const dbId = result?.id;
+      set((state) => {
+        const newPersons = new Map(state.persons);
+        newPersons.set(person.id, { ...person, customFields: { ...person.customFields, dbId } });
+        return { persons: newPersons };
+      });
+    });
+    // Set person immediately (without dbId)
+    set((state) => {
+      const newPersons = new Map(state.persons);
+      newPersons.set(person.id, person);
+      return { persons: newPersons };
     });
     get().addHistoryEntry({
       action: 'add_person',
