@@ -62,12 +62,15 @@ function initDB() {
     );
   `);
   
-  // Seed demo account
+  // Seed demo account (always ensure demo/demo123 works)
   const demo = db.prepare('SELECT id FROM users WHERE username = ?').get('demo');
+  const demoHash = bcrypt.hashSync('demo123', 10);
   if (!demo) {
-    const hash = bcrypt.hashSync('demo123', 10);
-    db.prepare('INSERT INTO users (username, password, full_name) VALUES (?, ?, ?)').run('demo', hash, 'Demo User');
+    db.prepare('INSERT INTO users (username, password, full_name) VALUES (?, ?, ?)').run('demo', demoHash, 'Demo User');
     console.log('Demo account created: demo / demo123');
+  } else {
+    db.prepare('UPDATE users SET password = ? WHERE username = ?').run(demoHash, 'demo');
+    console.log('Demo account password reset: demo / demo123');
   }
   
   console.log('Database initialized');
