@@ -48,32 +48,50 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth }) => {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center',
-      background: '#0a0a0a'
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
     }}>
-      <Paper sx={{ p: 4, width: 360, background: '#1a1a1a', borderRadius: 2 }}>
-        <Typography variant="h5" sx={{ mb: 3, textAlign: 'center', color: '#4a9eff' }}>
+      <Paper sx={{ 
+        p: 4, 
+        width: 380, 
+        background: '#ffffff', 
+        borderRadius: 3,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      }}>
+        <Typography variant="h4" sx={{ mb: 1, textAlign: 'center', color: '#333', fontWeight: 'bold' }}>
           🌳 Gia Phả
         </Typography>
+        <Typography variant="body2" sx={{ mb: 3, textAlign: 'center', color: '#888' }}>
+          Quản lý gia phả gia đình
+        </Typography>
         
-        <Box sx={{ display: 'flex', mb: 2 }}>
+        <Box sx={{ display: 'flex', mb: 3, background: '#f5f5f5', borderRadius: 2, p: 0.5 }}>
           <Button 
             fullWidth 
-            variant={mode === 'login' ? 'contained' : 'outlined'}
+            variant={mode === 'login' ? 'contained' : 'text'}
             onClick={() => setMode('login')}
-            sx={{ mr: 1 }}
+            sx={{ 
+              borderRadius: 1.5,
+              color: mode === 'login' ? '#fff' : '#666',
+              fontWeight: 'bold',
+            }}
           >
             Đăng nhập
           </Button>
           <Button 
             fullWidth 
-            variant={mode === 'register' ? 'contained' : 'outlined'}
+            variant={mode === 'register' ? 'contained' : 'text'}
             onClick={() => setMode('register')}
+            sx={{ 
+              borderRadius: 1.5,
+              color: mode === 'register' ? '#fff' : '#666',
+              fontWeight: 'bold',
+            }}
           >
             Đăng ký
           </Button>
         </Box>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
 
         <form onSubmit={handleSubmit}>
           {mode === 'register' && (
@@ -83,6 +101,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth }) => {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               sx={{ mb: 2 }}
+              variant="outlined"
             />
           )}
           <TextField
@@ -92,6 +111,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth }) => {
             onChange={(e) => setUsername(e.target.value)}
             required
             sx={{ mb: 2 }}
+            variant="outlined"
           />
           <TextField
             fullWidth
@@ -101,11 +121,31 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth }) => {
             onChange={(e) => setPassword(e.target.value)}
             required
             sx={{ mb: 3 }}
+            variant="outlined"
           />
-          <Button fullWidth type="submit" variant="contained" size="large">
+          <Button 
+            fullWidth 
+            type="submit" 
+            variant="contained" 
+            size="large"
+            sx={{ 
+              py: 1.5,
+              fontWeight: 'bold',
+              fontSize: '16px',
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%)',
+              }
+            }}
+          >
             {mode === 'login' ? 'Đăng nhập' : 'Đăng ký'}
           </Button>
         </form>
+
+        <Typography variant="caption" sx={{ display: 'block', mt: 2, textAlign: 'center', color: '#aaa' }}>
+          Demo: demo / demo123
+        </Typography>
       </Paper>
     </Box>
   );
