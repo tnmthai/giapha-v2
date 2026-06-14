@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'giapha-secret-key-2024';
 
 // SQLite database
-const db = new Database('/data/giapha.db');
+const db = new Database('/tmp/giapha.db');
 db.pragma('journal_mode = WAL');
 
 // Middleware
